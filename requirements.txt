@@ -1,0 +1,4 @@
+djangorestframework_csv==2.1.1
+Django==3.2.3
+djangorestframework==3.12.4
+celery==5.1.0
