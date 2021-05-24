@@ -40,6 +40,8 @@
     cd ~
     git clone https://github.com/saimon4eg/testproject.git
     cd testproject
+    chmod +x ./install_rabit.sh
+    sudo ./install_rabit.sh
     sudo -H pip3 install --upgrade pip
     sudo -H pip3 install virtualenv
     virtualenv ../env
