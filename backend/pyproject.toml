@@ -1,0 +1,44 @@
+[build-system]
+requires = [
+    "setuptools",
+    "wheel"
+]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "testproject"
+dynamic = ["version"]
+requires-python = ">= 3.13"
+dependencies = [
+    "setuptools",
+    "uvicorn",
+    "aiomysql",
+    "PyMySQL",
+    "alembic",
+    "sqlalchemy",
+    "pydantic",
+    "pydantic-settings",
+    "fastapi",
+    "celery[redis]",
+    "redis",
+    "pytz",
+    "celery-redbeat",
+    "httpx",
+    "pytest",
+    "pytest-asyncio",
+    "pytest-mock",
+    "pika",
+    "aio-pika",
+]
+description = "Test project"
+readme = "README.md"
+authors = [
+    {name = "Andrey Andreev", email = "andreysandreev@gmail.com"}
+]
+keywords = ["test project", "backend", "fastapi"]
+classifiers = [
+    "Programming Language :: Python :: 3.13"
+]
+
+[project.scripts]
+check-db-connection = 'app.console:checkDBConnectionCommand'

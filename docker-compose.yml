@@ -1,0 +1,161 @@
+networks:
+  testproject_network:
+    name: testproject_network
+
+volumes:
+  mysqldata:
+  rabbitmq_data:
+
+services:
+  mysql:
+    restart: always
+    image: mysql:8.0
+    container_name: mysql
+    ports:
+      - '${MYSQL_CONTAINER_PORT}:3306'
+    env_file:
+      - .env
+    environment:
+      MYSQL_ROOT_PASSWORD: '${MYSQL_ROOT_PASSWORD}'
+      MYSQL_DATABASE: '${MYSQL_DATABASE}'
+      MYSQL_USER: '${MYSQL_USER}'
+      MYSQL_PASSWORD: '${MYSQL_PASSWORD}'
+    volumes:
+      - ./mysqldata:/var/lib/mysql
+    command: --default-authentication-plugin=mysql_native_password
+    networks:
+      - testproject_network
+
+  setup_db_for_testproject:
+    image: mysql:8.0
+    environment:
+      MYSQL_ROOT_PASSWORD: '${MYSQL_ROOT_PASSWORD}'
+      MYSQL_DATABASE: '${MYSQL_DATABASE}'
+      MYSQL_USER: '${MYSQL_USER}'
+      MYSQL_PASSWORD: '${MYSQL_PASSWORD}'
+    command: >
+      bash -c '
+        until mysql -h mysql -P 3306 -u ${MYSQL_USER} -p${MYSQL_PASSWORD} -e "SELECT 1" > /dev/null 2>&1
+        do
+          echo "Waiting for MySQL connection..."
+          sleep 2
+        done
+        echo "MySQL is ready"
+        mysql -h mysql -P 3306 -u ${MYSQL_USER} -p${MYSQL_PASSWORD} -e "CREATE DATABASE IF NOT EXISTS ${MYSQL_DATABASE};"
+        echo "DB ${MYSQL_DATABASE} ready"
+      '
+    networks:
+      - testproject_network
+    depends_on:
+      - mysql
+
+  redis:
+    image: redis:8-alpine
+    container_name: redis
+    restart: always
+    command: redis-server --requirepass '$REDIS_PASSWORD'
+    ports:
+      - '${REDIS_CONTAINER_PORT}:6379'
+    networks:
+      - testproject_network
+
+  rabbitmq:
+    image: rabbitmq:3-management
+    container_name: rabbitmq
+    restart: always
+    environment:
+      RABBITMQ_DEFAULT_USER: '${RABBITMQ_USER}'
+      RABBITMQ_DEFAULT_PASS: '${RABBITMQ_PASSWORD}'
+    ports:
+      - '${RABBITMQ_PORT}:5672'
+      - '${RABBITMQ_MANAGEMENT_PORT}:15672'
+    volumes:
+      - rabbitmq_data:/var/lib/rabbitmq
+    networks:
+      - testproject_network
+
+  testproject_worker:
+    restart: on-failure:3
+    container_name: testproject_worker
+    build:
+      context: ./backend
+      dockerfile: ./Dockerfile
+    volumes:
+      - ./backend/app:/srv/testproject/backend/app
+      - ./backend/celery_app:/srv/testproject/backend/celery_app
+      - ./backend/alembic:/srv/testproject/backend/alembic
+    env_file:
+      - .env
+    environment:
+      URL_PREFIX: '/backend/api'
+      ALLOW_CORS: 'false'
+      DATABASE_URL: 'mysql+aiomysql://${MYSQL_USER}:${MYSQL_PASSWORD}@mysql:3306/${MYSQL_DATABASE}'
+      REDIS_URL: 'redis://:${REDIS_PASSWORD}@redis:6379'
+      RABBITMQ_URL: 'amqp://${RABBITMQ_USER}:${RABBITMQ_PASSWORD}@rabbitmq:5672/'
+      PYTHONPATH: '/srv/testproject/backend'
+      DEBUG_MODE: '${DEBUG_MODE}'
+    command: [ 'celery', '-A', 'celery_app.app', 'worker', '--concurrency', '2', '-l', 'info' ]
+    networks:
+      - testproject_network
+    depends_on:
+      - setup_db_for_testproject
+      - redis
+      - rabbitmq
+
+  testproject_beat:
+    restart: on-failure:3
+    container_name: testproject_beat
+    build:
+      context: ./backend
+      dockerfile: ./Dockerfile
+    volumes:
+      - ./backend/app:/srv/testproject/backend/app
+      - ./backend/celery_app:/srv/testproject/backend/celery_app
+      - ./backend/alembic:/srv/testproject/backend/alembic
+    env_file:
+      - .env
+    environment:
+      URL_PREFIX: '/backend/api'
+      ALLOW_CORS: 'false'
+      DATABASE_URL: 'mysql+aiomysql://${MYSQL_USER}:${MYSQL_PASSWORD}@mysql:3306/${MYSQL_DATABASE}'
+      REDIS_URL: 'redis://:${REDIS_PASSWORD}@redis:6379'
+      RABBITMQ_URL: 'amqp://${RABBITMQ_USER}:${RABBITMQ_PASSWORD}@rabbitmq:5672/'
+      PYTHONPATH: '/srv/testproject/backend'
+      DEBUG_MODE: '${DEBUG_MODE}'
+    command: [ 'celery', '-A', 'celery_app.app', 'beat', '-l', 'info', '-S', 'redbeat.RedBeatScheduler' ]
+    networks:
+      - testproject_network
+    depends_on:
+      - setup_db_for_testproject
+      - redis
+      - rabbitmq
+
+  backend:
+    restart: on-failure:3
+    container_name: backend
+    build:
+      context: ./backend
+      dockerfile: ./Dockerfile
+    ports:
+      - '${BACKEND_CONTAINER_PORT}:8000'
+    volumes:
+      - ./backend/app:/srv/testproject/backend/app
+      - ./backend/celery_app:/srv/testproject/backend/celery_app
+      - ./backend/alembic:/srv/testproject/backend/alembic
+      - ./backend/tests:/srv/testproject/backend/tests
+    env_file:
+      - .env
+    environment:
+      URL_PREFIX: '/backend/api'
+      ALLOW_CORS: 'false'
+      DATABASE_URL: 'mysql+aiomysql://${MYSQL_USER}:${MYSQL_PASSWORD}@mysql:3306/${MYSQL_DATABASE}'
+      REDIS_URL: 'redis://:${REDIS_PASSWORD}@redis:6379'
+      RABBITMQ_URL: 'amqp://${RABBITMQ_USER}:${RABBITMQ_PASSWORD}@rabbitmq:5672/'
+      PYTHONPATH: '/srv/testproject/backend'
+      DEBUG_MODE: '${DEBUG_MODE}'
+    networks:
+      - testproject_network
+    depends_on:
+      - setup_db_for_testproject
+      - redis
+      - rabbitmq

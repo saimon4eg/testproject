@@ -1,0 +1,9 @@
+/**
+!/app
+!/celery_app
+!/alembic
+!/tests
+!/setup.py
+!/alembic.ini
+!/start.sh
+!/pyproject.toml
